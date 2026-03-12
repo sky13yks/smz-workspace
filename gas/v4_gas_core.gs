@@ -52,9 +52,9 @@ function createDealFolder(dealId, dealName, customerId) {
   const rootFolder = DriveApp.getFolderById(ROOT_FOLDER_ID);
   
   // 2. 顧客名を取得（T1シートに会社名が入っていない前提のため、M1シートから引く）
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   let companyName = "その他";
   if (customerId) {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     const m1Sheet = ss.getSheetByName("M1_Companies");
     const m1Data = m1Sheet.getDataRange().getValues();
     const companyRow = m1Data.find(row => row[0] === customerId); // 会社IDは0列目

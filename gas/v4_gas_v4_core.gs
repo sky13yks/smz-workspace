@@ -16,7 +16,7 @@ const CONFIG = {
 /**
  * AppSheet からの Webhook (POST) をメインエントリポイントとして処理
  */
-function doPost(e) {
+function doPost_legacy_v2(e) {
   const data = JSON.parse(e.postData.contents);
   const action = data.action; // AppSheet Webhook で "action" パラメータを送る
   const record = data.record;
@@ -46,7 +46,7 @@ function doPost(e) {
 /**
  * [Google Drive 連携] 案件別のフォルダ構造を自動作成
  */
-function createDealFolder(record) {
+function createDealFolder_v2(record) {
   // パス: [顧客名]/[案件ID_案件名]
   const customerName = record.CompanyName || "不明な顧客";
   const dealInfo = record.DealID + "_" + (record.DealName || "無題の案件");
