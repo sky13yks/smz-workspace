@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+    <meta charset="utf-8">
+    <title>案件管理システム v4.0 業務フロープレゼンテーション</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Reveal.js CSS -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reset.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/theme/simple.min.css"
+        id="theme">
+
+    <!-- Mermaid.js -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700&display=swap');
+
+        .reveal h1,
+        .reveal h2,
+        .reveal h3,
+        .reveal h4,
+        .reveal p,
+        .reveal li {
+            font-family: 'Noto Sans JP', sans-serif;
+            text-transform: none;
+        }
+
+        .reveal h2 {
+            border-bottom: 3px solid #0056b3;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            font-weight: bold;
+        }
+
+        .highlight-blue {
+            color: #01579b;
+            font-weight: bold;
+            background: #e1f5fe;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .highlight-orange {
+            color: #e65100;
+            font-weight: bold;
+            background: #fff3e0;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        .reveal table {
+            font-size: 0.6em;
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        .reveal table th {
+            background-color: #01579b;
+            color: white;
+            text-align: center;
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+
+        .reveal table td {
+            border: 1px solid #ddd;
+            padding: 10px;
+        }
+
+        .mermaid-container {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="reveal">
+        <div class="slides">
+
+            <!-- スライド 1: タイトル -->
+            <section>
+                <h1 style="font-size: 1.8em; color: #0056b3;">案件管理システム v4.0</h1>
+                <h3 style="font-size: 1.2em; margin-top: 20px;">〜「人が判断し、システムが作業する」現場へ〜</h3>
+                <p style="margin-top: 50px; font-size: 0.8em; color: #666;">株式会社 清水商會</p>
+            </section>
+
+            <!-- スライド 2: 基本コンセプト -->
+            <section>
+                <h2>💡 基本コンセプト</h2>
+                <h3 style="color:#d32f2f; margin-bottom: 30px;">『書類をアップロードすれば、案件が進む』</h3>
+                <ul style="font-size: 0.8em; line-height: 1.8;">
+                    <li><span class="highlight-blue">👤 ユーザーの役割：</span> 顧客との折衝、現場での判断、最終的な書類のUP</li>
+                    <li><span class="highlight-orange">⚙️ システムの役割：</span> フォルダ作成、ステータス更新、帳票生成、リマインド</li>
+                </ul>
+                <div
+                    style="margin-top: 40px; padding: 15px; background: #f5f5f5; border-left: 5px solid #4CAF50; font-size: 0.7em; text-align: left;">
+                    人間は「入力作業」から解放され、営業活動や技術的な「判断」に集中できるようになります。
+                </div>
+            </section>
+
+            <!-- スライド 3: ワークフロー全体像 -->
+            <section>
+                <h2>📊 全体ワークフローと役割分担</h2>
+                <div class="mermaid-container">
+                    <div class="mermaid" style="font-size: 0.45em !important; display: flex; justify-content: center;">
+                        graph TD
+                        classDef user fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+                        classDef system fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+                        classDef status fill:#f0f4c3,stroke:#827717,stroke-width:1px;
+
+                        S1((1. 引合)):::status
+                        S2((2. 仕入見積<br>依頼中)):::status
+                        S3((3. 見積<br>作成中)):::status
+                        S4((4. 見積<br>提出済)):::status
+                        S5((5. 受注<br>発注済)):::status
+                        S6((6. 承認図<br>確定)):::status
+                        S7((7. 納品済)):::status
+                        S8((8. 請求済)):::status
+
+                        U1[👤 1. 案件作成 & 諸元入力]:::user
+                        U2[👤 2. ワーク図面UP]:::user
+                        U3[👤 3. 仕入見積書UP]:::user
+                        U4[👤 4. 販売見積書UP]:::user
+                        U5[👤 5. 注文書UP]:::user
+                        U6[👤 6. 承認図UP]:::user
+                        U7[👤 7. 納品書UP]:::user
+                        U8[👤 8. 請求書UP]:::user
+
+                        B1[⚙️ フォルダ自動生成]:::system
+                        B2[⚙️ 自動ステータス更新]:::system
+                        B3[⚙️ 自動ステータス更新]:::system
+                        B4[⚙️ 7日後リマインド]:::system
+                        B5[⚙️ 発注書自動作成]:::system
+                        B6[⚙️ DBへ仮登録]:::system
+                        B7[⚙️ 資産個体 正式登録]:::system
+                        B8[⚙️ 請求リスト抽出]:::system
+
+                        U1 --> B1 --> S1 --> U2 --> B2 --> S2 --> U3 --> B3 --> S3 --> U4 --> B4 --> S4 --> U5 --> B5
+                        --> S5 --> U6 --> B6 --> S6 --> U7 --> B7 --> S7 --> U8 --> B8 --> S8
+                    </div>
+                </div>
+                <p style="font-size: 0.4em; margin-top: 10px;">青：人が行う操作 ／ オレンジ：システムが自動で行う処理</p>
+            </section>
+
+            <!-- スライド 4: 各フェーズの業務対比 -->
+            <section>
+                <h2>📝 ステージ別 アクション対照表</h2>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 15%">業務フェーズ</th>
+                            <th style="width: 35%">👤 人（ユーザー）の作業</th>
+                            <th style="width: 35%">⚙️ システムの処理</th>
+                            <th style="width: 15%">導入メリット</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>案件発生</strong></td>
+                            <td>案件作成し、顧客名や諸元を入力</td>
+                            <td class="highlight-orange">案件フォルダ自動生成</td>
+                            <td>フォルダ作成ゼロ</td>
+                        </tr>
+                        <tr>
+                            <td><strong>見積依頼</strong></td>
+                            <td>ワーク図面アップロード</td>
+                            <td class="highlight-orange">ステータス「依頼中」へ更新</td>
+                            <td>進捗の見える化</td>
+                        </tr>
+                        <tr>
+                            <td><strong>見積提出</strong></td>
+                            <td>仕入/販売見積アップロード</td>
+                            <td class="highlight-orange">7日後にフォローリマインド</td>
+                            <td>放置・抜け漏れ防止</td>
+                        </tr>
+                        <tr>
+                            <td><strong>受注手配</strong></td>
+                            <td>注文書アップロード</td>
+                            <td class="highlight-orange">メーカー発注書PDF自動作成</td>
+                            <td>転記ミス防止・秒速化</td>
+                        </tr>
+                        <tr>
+                            <td><strong>図面承認</strong></td>
+                            <td>承認図アップロード</td>
+                            <td class="highlight-orange">個体DBへ図面仮登録</td>
+                            <td>図面の迷子防止</td>
+                        </tr>
+                        <tr>
+                            <td><strong>納品完了</strong></td>
+                            <td>受領印付の納品書アップロード</td>
+                            <td class="highlight-orange">製造番号を付与・正式資産登録</td>
+                            <td>カルテの自動完成</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+
+            <!-- スライド 5: まとめ -->
+            <section>
+                <h2>🎯 まとめ</h2>
+                <ul style="font-size: 0.9em; line-height: 2.0; margin-top: 30px;">
+                    <li>人は<strong>「判断」</strong>し、紙やPDFを<strong>「アップロード」</strong>するだけ。</li>
+                    <li>システムは裏側で<strong>「整理」「通知」「書類作成」</strong>を全て自動処理。</li>
+                    <li>結果としてデータ入力の手間が極限まで減り、<br><span
+                            style="color: #d32f2f; font-weight: bold; border-bottom: 2px solid #d32f2f;">本来の営業・技術提案に時間を使える</span>ようになります。
+                    </li>
+                </ul>
+                <h3 style="margin-top: 50px; color: #0056b3;">ご清聴ありがとうございました</h3>
+            </section>
+
+        </div>
+    </div>
+
+    <!-- Reveal.js & Mermaid Initialization -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.3.1/reveal.min.js"></script>
+    <script>
+        Reveal.initialize({
+            hash: true,
+            slideNumber: 'c/t',
+            transition: 'slide',
+            controls: true,
+            progress: true,
+            center: true,
+        });
+
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: 'default',
+            securityLevel: 'loose'
+        });
+
+        // Handle Mermaid rendering in Reveal.js slides (wait for slide changes)
+        Reveal.on('slidechanged', event => {
+            mermaid.contentLoaded();
+        });
+    </script>
+</body>
+
+</html>

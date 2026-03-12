@@ -1,0 +1,34 @@
+{
+  "name": "SMZ GAS Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+
+  // VS Code 拡張機能（自動インストール）
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "googlecloudtools.cloudcode",
+        "github.vscode-pull-request-github",
+        "eamodio.gitlens",
+        "streetsidesoftware.code-spell-checker"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2
+      }
+    }
+  },
+
+  // コンテナ起動後に自動実行
+  "postCreateCommand": "echo '✅ SMZ開発環境の準備完了！\\n次のステップ: cd gas && clasp login でGoogleアカウントにログイン'",
+
+  // ホストの.clasprc.json（Google認証情報）をコンテナと共有
+  // ※ これによりコンテナ内でも認証が維持される
+  "mounts": [
+    "source=${localEnv:HOME}/.clasprc.json,target=/root/.clasprc.json,type=bind,consistency=cached"
+  ]
+}

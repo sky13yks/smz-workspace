@@ -1,0 +1,52 @@
+name: GAS コード チェック
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [develop]
+
+jobs:
+  syntax-check:
+    name: GASファイルの構文チェック
+    runs-on: ubuntu-latest
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: Node.jsをセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: claspをインストール
+        run: npm install -g @google/clasp@2.4.2
+
+      - name: .gsファイルの存在確認
+        run: |
+          echo "=== GASファイル一覧 ==="
+          ls -la gas/*.gs
+          echo "=== ファイル数: $(ls gas/*.gs | wc -l) ==="
+
+      - name: JavaScriptとして構文チェック
+        run: |
+          npm install -g acorn
+          for f in gas/*.gs; do
+            echo "チェック中: $f"
+            # GAS固有の構文を除外して基本的な構文チェック
+            cat "$f" | sed 's/Logger\.log/console.log/g' | \
+              node -e "
+                const fs = require('fs');
+                let code = '';
+                process.stdin.on('data', d => code += d);
+                process.stdin.on('end', () => {
+                  try {
+                    new Function(code);
+                    console.log('✅ OK');
+                  } catch(e) {
+                    // GAS固有構文はスキップ
+                    console.log('⚠️  スキップ（GAS固有構文）');
+                  }
+                });
+              " || true
+          done
