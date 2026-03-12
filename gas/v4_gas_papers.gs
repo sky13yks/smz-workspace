@@ -94,58 +94,101 @@ function copyPaperAndLines(sourcePaperId, targetType) {
 /**
  * 対象の帳票データをSSテンプレートに流し込み、PDF化してDriveに保存する
  * @param {string} paperId - PDF化する対象の帳票ID
+ * @returns {string} 生成されたPDFのURL
  */
 function generatePaperPdf(paperId) {
-  // 1. スプレッドシートテンプレートのコピー
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // ── 1. T2_Papers から帳票ヘッダ取得 ──────────────────────────
+  const t2Sheet = ss.getSheetByName("T2_Papers");
+  const t2Data  = t2Sheet.getDataRange().getValues();
+  const t2H     = t2Data[0];
+  const paperRow = t2Data.find((r, i) => i > 0 && r[t2H.indexOf("帳票ID")] === paperId);
+  if (!paperRow) throw new Error("帳票ID が見つかりません: " + paperId);
+
+  const paperType   = paperRow[t2H.indexOf("種別")];
+  const issueDate   = paperRow[t2H.indexOf("発行日")] || new Date();
+  const expireDate  = paperRow[t2H.indexOf("有効期限")] || "";
+  const dealId      = paperRow[t2H.indexOf("案件ID")];
+  const companyId   = paperRow[t2H.indexOf("相手先会社ID")];
+  const totalAmount = paperRow[t2H.indexOf("合計金額")] || 0;
+  const remarks     = paperRow[t2H.indexOf("備考")] || "";
+
+  // ── 2. M1_Companies から相手先会社名取得 ─────────────────────
+  const m1Sheet = ss.getSheetByName("M1_Companies");
+  const m1Data  = m1Sheet.getDataRange().getValues();
+  const m1H     = m1Data[0];
+  const companyRow = m1Data.find((r, i) => i > 0 && r[m1H.indexOf("会社ID")] === companyId);
+  const companyName = companyRow ? companyRow[m1H.indexOf("会社名")] + " 御中" : "御中";
+
+  // ── 3. T1_Deals から案件名・担当者取得 ───────────────────────
+  const t1Sheet = ss.getSheetByName("T1_Deals");
+  const t1Data  = t1Sheet.getDataRange().getValues();
+  const t1H     = t1Data[0];
+  const dealRow = t1Data.find((r, i) => i > 0 && r[t1H.indexOf("案件ID")] === dealId);
+  const dealName    = dealRow ? dealRow[t1H.indexOf("案件名")] : "";
+  const dealFolderUrl = dealRow ? dealRow[t1H.indexOf("ドライブフォルダURL")] : "";
+
+  // ── 4. T2D_PaperLines から明細行取得 ─────────────────────────
+  const t2dSheet = ss.getSheetByName("T2D_PaperLines");
+  const t2dData  = t2dSheet.getDataRange().getValues();
+  const t2dH     = t2dData[0];
+  const lines = t2dData.filter((r, i) => i > 0 && r[t2dH.indexOf("帳票ID")] === paperId);
+
+  // ── 5. テンプレートSSをコピーして一時ファイル作成 ──────────────
   const sourceFile = DriveApp.getFileById(PAPER_TEMPLATE_ID);
   const tempFolder = DriveApp.getFolderById(TEMP_PDF_FOLDER_ID);
-  const tempFile = sourceFile.makeCopy(`${paperId}_output`, tempFolder);
+  const tempFile   = sourceFile.makeCopy(`${paperId}_tmp`, tempFolder);
   const tempFileId = tempFile.getId();
-  
-  const ssTemp = SpreadsheetApp.openById(tempFileId);
-  const sheetTemp = ssTemp.getSheets()[0]; // 1つ目のシートを使用
-  
-  // 2. 元データの取得（T2, T2D, T1, M1等から情報を集約する処理）
-  //    ※現状はダミーデータ流し込みのサンプルロジックですが、
-  //    実運用ではSpreadsheetAppで関連データを引いてくる処理を書きます。
-  
-  const companyName = "株式会社〇〇 御中"; // 実際はM1から取得
-  const details = [
-    { name: "ホブカッター", qty: 2, price: 50000 },
-    { name: "コーティング", qty: 2, price: 3000 }
-  ];
-  
-  // 3. テンプレートへのデータ書き込み
-  sheetTemp.getRange("B4").setValue(companyName);       // 宛先設定の例
-  sheetTemp.getRange("H4").setValue(new Date());        // 発行日
-  sheetTemp.getRange("I9").setValue(paperId);           // 番号
-  
-  let startRow = 15; // 明細開始行の例
-  for (let i = 0; i < details.length; i++) {
-    sheetTemp.getRange(startRow + i, 2).setValue(details[i].name);
-    sheetTemp.getRange(startRow + i, 6).setValue(details[i].qty);
-    sheetTemp.getRange(startRow + i, 8).setValue(details[i].price);
+  const sheetTemp  = SpreadsheetApp.openById(tempFileId).getSheets()[0];
+
+  // ── 6. テンプレートへデータ書き込み ──────────────────────────
+  sheetTemp.getRange("B4").setValue(companyName);
+  sheetTemp.getRange("H4").setValue(issueDate);
+  sheetTemp.getRange("H5").setValue(expireDate);
+  sheetTemp.getRange("I9").setValue(paperId);
+  sheetTemp.getRange("B9").setValue("件名: " + dealName);
+
+  const DETAIL_START_ROW = 15;
+  lines.forEach((line, idx) => {
+    const row = DETAIL_START_ROW + idx;
+    sheetTemp.getRange(row, 2).setValue(line[t2dH.indexOf("項目名")]);
+    sheetTemp.getRange(row, 5).setValue(line[t2dH.indexOf("数量")]);
+    sheetTemp.getRange(row, 6).setValue(line[t2dH.indexOf("単位")]);
+    sheetTemp.getRange(row, 7).setValue(line[t2dH.indexOf("単価")]);
+    sheetTemp.getRange(row, 8).setValue(line[t2dH.indexOf("金額")]);
+  });
+
+  if (remarks) sheetTemp.getRange("B" + (DETAIL_START_ROW + lines.length + 3)).setValue("備考: " + remarks);
+
+  SpreadsheetApp.flush();
+
+  // ── 7. PDF出力 ────────────────────────────────────────────────
+  const exportUrl = `https://docs.google.com/spreadsheets/d/${tempFileId}/export?exportFormat=pdf&format=pdf&size=A4&portrait=true&fitw=true&sheetnames=false&printtitle=false&pagenumbers=false`;
+  const token    = ScriptApp.getOAuthToken();
+  const pdfBlob  = UrlFetchApp.fetch(exportUrl, { headers: { Authorization: "Bearer " + token } })
+                              .getBlob().setName(`${paperType}_${paperId}.pdf`);
+
+  // ── 8. 案件フォルダに保存（フォルダURLがあればそこへ、なければTEMPフォルダへ）─
+  let saveFolder = tempFolder;
+  if (dealFolderUrl) {
+    try {
+      const folderId = dealFolderUrl.match(/[-\w]{25,}/)?.[0];
+      if (folderId) saveFolder = DriveApp.getFolderById(folderId);
+    } catch(e) { /* フォルダ取得失敗時はTEMPに保存 */ }
   }
-  
-  SpreadsheetApp.flush(); // 即時反映
-  
-  // 4. スプレッドシートをPDFとして出力
-  const url = `https://docs.google.com/spreadsheets/d/${tempFileId}/export?exportFormat=pdf&format=pdf&size=A4&portrait=true&fitw=true&sheetnames=false&printtitle=false&pagenumbers=false`;
-  const token = ScriptApp.getOAuthToken();
-  const response = UrlFetchApp.fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
-  const pdfBlob = response.getBlob().setName(`${paperId}.pdf`);
-  
-  // 5. T1_Dealsから案件フォルダのURL（ID）を逆引きし、そこに保存
-  // （ここでは簡略化のためルートフォルダ保存）
-  // 実際は DriveApp.getFolderById(targetFolderId).createFile(pdfBlob); を行います。
-  const createdFile = DriveApp.getFolderById(TEMP_PDF_FOLDER_ID).createFile(pdfBlob);
-  const pdfUrl = createdFile.getUrl();
-  
-  // 6. 後処理（テンポラリファイルの削除）
+  const pdfFile = saveFolder.createFile(pdfBlob);
+  const pdfUrl  = pdfFile.getUrl();
+
+  // ── 9. T2_PapersにPDF_URLを書き戻す ──────────────────────────
+  const pdfUrlCol = t2H.indexOf("PDF_URL");
+  if (pdfUrlCol !== -1) {
+    const rowIdx = t2Data.findIndex((r, i) => i > 0 && r[t2H.indexOf("帳票ID")] === paperId);
+    if (rowIdx > 0) t2Sheet.getRange(rowIdx + 1, pdfUrlCol + 1).setValue(pdfUrl);
+  }
+
+  // ── 10. 後処理（一時ファイル削除）────────────────────────────
   DriveApp.getFileById(tempFileId).setTrashed(true);
-  
-  // 7. 生成されたPDFのURLを T5_Files（図面・資料管理）などに紐付けて記録する処理を繋げます
-  // ...
-  
+
   return `PDF Generated: ${pdfUrl}`;
 }

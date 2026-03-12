@@ -91,3 +91,40 @@ function createDealFolder(dealId, dealName, customerId) {
 
   return `Folder created successfully: ${folderUrl}`;
 }
+
+/**
+ * ============================================================
+ * 【テスト用】createDealFolder の動作確認
+ * GASエディタで直接この関数を実行してください。
+ * 実行後、ROOT_FOLDER_ID のフォルダ内に
+ *   テスト会社A/[TEST-001] テスト案件
+ * というフォルダが作成されれば成功です。
+ * ============================================================
+ */
+function testCreateDealFolder() {
+  // M1_Companiesにテスト会社を1行追加してからテスト
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+
+  // テストデータをM1に追加
+  const m1Sheet = ss.getSheetByName("M1_Companies");
+  m1Sheet.appendRow(["TEST-C01", "テスト会社A", "", "顧客", "", "", "", "", "", "", 1.3, "テスト用"]);
+
+  // テストデータをT1に追加
+  const t1Sheet = ss.getSheetByName("T1_Deals");
+  t1Sheet.appendRow(["TEST-001", "テスト案件", "オーダーメイド工具", "", "",
+                     "新規受付", "TEST-C01", "", "", "", "",
+                     false, "", false, "",
+                     new Date(), "", new Date(), "", "", "テスト用"]);
+
+  // createDealFolder を実行
+  const result = createDealFolder("TEST-001", "テスト案件", "TEST-C01");
+  Logger.log("結果: " + result);
+
+  // テストデータを削除
+  const m1Last = m1Sheet.getLastRow();
+  const t1Last = t1Sheet.getLastRow();
+  m1Sheet.deleteRow(m1Last);
+  t1Sheet.deleteRow(t1Last);
+
+  Logger.log("テストデータを削除しました。上記のURLにフォルダが作成されていれば成功です。");
+}
