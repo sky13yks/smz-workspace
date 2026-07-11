@@ -43,6 +43,7 @@ AIレビューを有効化(任意): `pip install -e ".[ai]"` + `ANTHROPIC_API_KE
 | [docs/02_risk_policy.md](docs/02_risk_policy.md) | リスクポリシー正典(全ルール↔実装の対応表) |
 | [docs/03_broker_and_data_setup.md](docs/03_broker_and_data_setup.md) | 証券会社・データソースの選定と開設手順 |
 | [docs/04_operations_runbook.md](docs/04_operations_runbook.md) | 日次/月次/年次の運用手順・緊急対応・税務 |
+| [docs/05_moomoo_start_guide.md](docs/05_moomoo_start_guide.md) | **moomoo証券で始める超初心者ガイド**(入金・発注・半手動運用・ハンドオフ後の確認) |
 
 ## テスト
 
