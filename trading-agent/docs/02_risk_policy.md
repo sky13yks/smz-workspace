@@ -71,6 +71,13 @@
 
 ## R8. 実弾移行の追加条件(Phase 2)
 
-- `mode.trading="live"` はブローカーアダプタ実装+以下が揃うまでコードが起動を拒否する(`broker.make_broker`)。
-- 初回発注は最小サイズ(1万円分)で行い、約定・残高照合を目視確認してから全額運用。
-- APIキーは `secrets.env`(Git管理外)のみに置く。リポジトリへの書き込み禁止。
+- **ライブ発注の多重ゲート**(全通過時のみ実弾発注、`broker.make_broker` / `require_live_confirmation`):
+  1. `mode.trading="live"`
+  2. `mode.live_broker` が実装済みアダプタ(現状 `alpaca`)
+  3. 認証情報(`ALPACA_API_KEY` / `ALPACA_SECRET_KEY`)が環境に存在
+  4. 環境変数 `SMZ_LIVE_CONFIRM` が確認フレーズと**完全一致**
+  → いずれか欠けると `BrokerError` で発注せず、`run-daily` はフェイルセーフ(何もしない)で停止。
+- 初回発注は最小サイズ(1万円分)で行い、`reconcile` で約定・残高照合を目視確認してから全額運用。
+- **後刻約定**: 市場閉場後の発注は翌場寄りで約定 → `sync-fills` が冪等キー(`client_order_id`)で
+  二重計上なく台帳へ反映する。約定完了(filled)のみ台帳に記録し、未約定は保留として扱う。
+- APIキーと `SMZ_LIVE_CONFIRM` は `secrets.env`(Git管理外)のみに置く。リポジトリへの書き込み禁止。

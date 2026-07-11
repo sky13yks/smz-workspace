@@ -55,6 +55,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="ハードフロア停止からの再開に必須(リスク了承の明示)")
     sub.add_parser("verify-ledger", help="台帳のハッシュ連鎖を検証")
     sub.add_parser("fetch-data", help="全銘柄のデータをキャッシュに取得")
+    sub.add_parser("broker-check", help="ブローカー接続と口座状態を確認(読み取り専用)")
+    sub.add_parser("reconcile", help="台帳と実ブローカーの残高・ポジションを照合(読み取り専用)")
+    p = sub.add_parser("sync-fills", help="後刻約定した実注文を台帳に反映(冪等)")
+    p.add_argument("--offline", action="store_true")
 
     args = parser.parse_args(argv)
     cfg = load_config(args.config)
@@ -147,8 +151,92 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {sym:<8} {len(bars):>6}本  最終 {bars[-1].date}")
         return 0
 
+    if args.cmd == "broker-check":
+        return _broker_check(cfg)
+
+    if args.cmd == "reconcile":
+        return _reconcile(cfg)
+
+    if args.cmd == "sync-fills":
+        from .broker import BrokerError
+        from .runner import sync_fills
+        try:
+            fills = sync_fills(cfg, offline=args.offline)
+        except BrokerError as e:
+            print(f"ブローカーエラー: {e}")
+            return 1
+        if not fills:
+            print("反映すべき新規約定はありません")
+        else:
+            print(f"{len(fills)}件の後刻約定を台帳に反映しました:")
+            for f in fills:
+                print(f"  {f.side} {f.symbol} x {f.qty} @ {f.price:.2f}{f.ccy} "
+                      f"({f.notional_jpy:,.0f}円) [{f.client_order_id}]")
+        return 0
+
     parser.error("unknown command")
     return 2
+
+
+def _broker_check(cfg) -> int:
+    from .broker import BrokerError, PaperBroker, make_broker
+    try:
+        broker = make_broker(cfg)
+    except BrokerError as e:
+        print(f"✗ ブローカー生成失敗:\n{e}")
+        return 1
+    if isinstance(broker, PaperBroker):
+        print("✓ ペーパーモード(mode.trading='paper')。外部ブローカー接続はありません。")
+        print("  実弾接続を試すには config を live + secrets.env + SMZ_LIVE_CONFIRM を設定してください。")
+        return 0
+    try:
+        acct = broker.account()
+    except BrokerError as e:
+        print(f"✗ 口座照会失敗: {e}")
+        return 1
+    kind = "ペーパー(偽金・実API)" if broker.is_paper else "★実弾(本物のお金)★"
+    print(f"✓ ブローカー接続OK — Alpaca {kind}")
+    print(f"  口座状態  : {acct.get('status')}")
+    print(f"  通貨      : {acct.get('currency')}")
+    print(f"  現金      : {acct.get('cash')}")
+    print(f"  買付余力  : {acct.get('buying_power')}")
+    try:
+        print(f"  保有銘柄数: {len(broker.positions())}")
+    except BrokerError:
+        pass
+    return 0
+
+
+def _reconcile(cfg) -> int:
+    from .broker import BrokerError
+    from .runner import reconcile
+    try:
+        r = reconcile(cfg)
+    except BrokerError as e:
+        print(f"✗ 照合失敗: {e}")
+        return 1
+    for n in r["notes"]:
+        print(n)
+    if not r["account"]:
+        return 0
+    a = r["account"]
+    kind = "ペーパー" if a.get("is_paper") else "★実弾★"
+    print(f"=== 残高照合({kind}) ===")
+    print(f"  口座状態    : {a.get('status')} / 現金 {a.get('cash')} {a.get('currency')}")
+    print(f"  台帳現金(円): {a.get('ledger_cash_jpy'):,.0f}")
+    print("  --- ポジション(銘柄: 台帳 vs ブローカー = 差分) ---")
+    drift = False
+    for p in r["positions"]:
+        flag = "" if abs(p["diff"]) < 1e-4 else "  ⚠ 差分あり"
+        if flag:
+            drift = True
+        print(f"    {p['symbol']:<8} {p['ledger_qty']:>10} vs {p['broker_qty']:>10} "
+              f"= {p['diff']:+.4f}{flag}")
+    if drift:
+        print("  ⚠ 差分があります。docs/04 の障害対応(誤発注疑い)を参照してください。")
+    else:
+        print("  ✓ 台帳とブローカーは一致しています。")
+    return 0
 
 
 def _try_prices(cfg):
