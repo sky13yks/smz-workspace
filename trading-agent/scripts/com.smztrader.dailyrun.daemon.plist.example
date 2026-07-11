@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  常時起動のMac mini向け: LaunchDaemon版(com.smztrader.dailyrun.plist.example の上位互換)。
+
+  LaunchAgent(~/Library/LaunchAgents)との違い:
+    - LaunchAgent はユーザーが GUI にログインしている間しか動かない
+    - LaunchDaemon はマシン起動時にログイン有無に関わらず動く
+      (macOSのセキュリティアップデートによる無人再起動後も、誰もログインし直さずに
+       自動的に動き続ける — 「触らない前提で置いておくMac mini」に向いている)
+    - その分インストールに sudo が必要で、/Library/LaunchDaemons/ に置く
+
+  使い方:
+    1. __REPO_ROOT__ を実際の絶対パスに、__MAC_USERNAME__ をこのMac miniにログインする
+       ユーザー名(`whoami` で確認)に置換
+    2. システム全体のディレクトリにコピー(sudo必須)
+    3. sudo launchctl load -w /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+    4. 動作確認: sudo launchctl start com.smztrader.dailyrun → state/cron.log を確認
+    5. 停止する場合: sudo launchctl unload /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+
+  まとめて置換してインストールする例:
+    sed -e "s|__REPO_ROOT__|$(pwd)|g" -e "s|__MAC_USERNAME__|$(whoami)|g" \
+      scripts/com.smztrader.dailyrun.daemon.plist.example \
+      | sudo tee /Library/LaunchDaemons/com.smztrader.dailyrun.plist > /dev/null
+    sudo launchctl load -w /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+
+  併せて、Mac miniがスリープしないよう設定しておくこと(ターミナルで1回実行):
+    sudo pmset -a sleep 0 disksleep 0
+    # ディスプレイのスリープ(画面が暗くなるだけ)は動作に影響しないので任意でよい:
+    sudo pmset -a displaysleep 10
+  現在の設定確認: pmset -g
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.smztrader.dailyrun</string>
+    <key>UserName</key>
+    <string>__MAC_USERNAME__</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO_ROOT__/scripts/run_daily.sh</string>
+    </array>
+    <!-- 平日朝08:10(米国市場クローズ後・JST)。土日は run-daily 側で自動的に何もしない -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>10</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/state/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/state/launchd.err.log</string>
+</dict>
+</plist>

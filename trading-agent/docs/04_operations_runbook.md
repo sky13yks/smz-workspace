@@ -49,10 +49,10 @@ chmod +x scripts/run_daily.sh   # 初回のみ(macOS/Linuxで実行権限を付�
 
 リトライ回数・間隔は環境変数で調整可能: `SMZ_DAILY_MAX_RETRIES`(既定3)、`SMZ_DAILY_RETRY_DELAY`(既定90秒)。
 
-### macOS: launchd(推奨・ノートPC向け)
+### macOS(ノートPC・スリープする運用): launchd LaunchAgent
 
 cronと違い、指定時刻にスリープ中でも**次に起きた時に自動で追いつき実行**してくれるため、
-夜間に閉じるノートPCとの相性が良い。
+夜間に閉じるノートPCとの相性が良い。ログインしている間だけ動く(LaunchAgent)。
 
 ```bash
 # テンプレートを実パスに置換してコピー
@@ -70,6 +70,43 @@ launchctl unload ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
 
 既定は平日08:10。時刻を変えたい場合は `~/Library/LaunchAgents/com.smztrader.dailyrun.plist` の
 `Hour`/`Minute` を編集後、`unload` → `load -w` でリロードする。
+
+### macOS(Mac mini等・常時起動デスクトップ運用): 推奨構成
+
+Mac miniのようにスリープさせずに置いておくマシンでは、以下の2点を合わせて設定すると
+「物理的な制約」の範囲内で最も止まりにくい構成になる。
+
+**1. スリープを無効化する**(ターミナルで1回実行。要sudo):
+
+```bash
+sudo pmset -a sleep 0 disksleep 0
+# ディスプレイが暗くなるだけの設定(displaysleep)は動作に影響しないので好みで良い:
+sudo pmset -a displaysleep 10
+pmset -g   # 現在の設定を確認
+```
+
+**2. LaunchAgentではなく LaunchDaemon を使う**(推奨): LaunchAgentは
+「ユーザーがGUIにログインしている間」しか動かない。Mac miniを常時ログイン状態で
+放置するだけなら LaunchAgent でも十分だが、**macOSのセキュリティアップデートによる
+無人再起動**が起きるとログインし直すまでLaunchAgentは動かない。LaunchDaemonは
+マシン起動時にログイン有無に関わらず動くため、この隙間も埋められる。
+
+```bash
+sed -e "s|__REPO_ROOT__|$(pwd)|g" -e "s|__MAC_USERNAME__|$(whoami)|g" \
+  scripts/com.smztrader.dailyrun.daemon.plist.example \
+  | sudo tee /Library/LaunchDaemons/com.smztrader.dailyrun.plist > /dev/null
+sudo launchctl load -w /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+
+# 動作確認(即時1回実行)
+sudo launchctl start com.smztrader.dailyrun
+tail -f state/cron.log
+
+# 停止したい時
+sudo launchctl unload /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+```
+
+(LaunchAgentとLaunchDaemonの両方を同時に有効化しないこと — 二重実行の原因になる。
+どちらか一方だけ `load` する。)
 
 ### Linux(Dev Container / 常時起動サーバ): cron
 

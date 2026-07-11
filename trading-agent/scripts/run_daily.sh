@@ -21,6 +21,12 @@ mkdir -p "$STATE_DIR"
 
 export PYTHONPATH="$REPO_ROOT/src"
 
+# launchd/cron/systemd はログインシェルの PATH を引き継がない(特にHomebrewの
+# python3 は /opt/homebrew/bin や /usr/local/bin に入っており、素の launchd/cron
+# からは見えないことが多い)。よくある場所を先頭に足しておき、「python3が見つから
+# ず毎回失敗する」事故を防ぐ。
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
 # secrets.env があれば読み込む(AIレビュー用ANTHROPIC_API_KEY等。未設定でも動作する)
 if [ -f "$REPO_ROOT/config/secrets.env" ]; then
   set -a
