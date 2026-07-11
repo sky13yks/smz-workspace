@@ -1,0 +1,15 @@
+# 実行時状態(台帳・キャッシュ・レポート)はGit管理外
+state/
+!state/.gitkeep
+
+# 秘密情報
+secrets.env
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+build/
+dist/

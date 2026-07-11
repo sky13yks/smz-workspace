@@ -1,0 +1,83 @@
+# =====================================================
+# SMZ Trader 設定ファイル
+# 「リスク設定の緩和」は docs/02_risk_policy.md の変更手続きに従うこと
+# =====================================================
+
+[account]
+base_currency = "JPY"
+# ペーパー運用の想定開始資金(deposit コマンドで実際に入金イベントを記録する)
+start_cash_jpy = 200000
+# ハードフロア: 資産がこれを割ったら全停止し人間のレビューを必須にする
+hard_floor_jpy = 50000
+
+[mode]
+# paper | live  (live は broker 実装とAPIキーが揃うまで起動を拒否する)
+trading = "paper"
+# 米国株の端数株(フラクショナル)取引を前提にするか
+fractional = true
+
+[paper]
+# ペーパー運用の開始日(決定論リプレイの基準日)
+inception = "2026-07-14"
+
+[strategy]
+# リバランスは月次(参照銘柄の月初第1営業日)
+rebalance = "monthly"
+core_weight = 0.70
+satellite_weight = 0.30
+satellite_top_n = 5
+# 個別銘柄の最大ウェイト(サテライト)
+max_weight_per_name = 0.10
+# リバランスバンド: 目標との乖離がこの比率を超えた時だけ売買(回転率・税・手数料の抑制)
+band = 0.20
+mom_lookback_days = 252
+mom_skip_days = 21
+trend_sma_days = 200
+vol_lookback_days = 60
+# サテライトの銘柄別ボラティリティ目標(年率)
+vol_target_annual = 0.25
+# 1注文の最小約定金額(これ未満のリバランスはスキップ)
+min_order_jpy = 1000
+
+[risk]
+# 高値(TWR指数ベース)からの最大許容ドローダウン。超えたら全売却+停止
+max_drawdown = 0.25
+# 月初からの最大許容損失。超えたら当月停止
+monthly_loss_limit = 0.10
+# 現金バッファ(買付は現金のこの割合を残す)
+cash_buffer = 0.01
+# ペーパー約定の想定スリッページ(bps)
+slippage_bps = 10
+# 想定手数料(bps)+最低手数料(円) ※Alpaca現物は0だが保守的に見積もる
+commission_bps = 5
+commission_min_jpy = 0
+
+[universe]
+# コア: 広範囲インデックスETF(モメンタムで択一)
+core = ["SPY", "QQQ"]
+# トレンド判定の参照銘柄
+trend_ref = "SPY"
+fx = "USDJPY"
+# サテライト: 流動性の高い米大型株ホワイトリスト(AIはこのリスト外を提案できない)
+# 注意: 「現在の」大型株リストでのバックテストは生存者バイアスで過大評価になる
+satellite = [
+  "AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "AVGO", "TSLA",
+  "LLY", "UNH", "V", "MA", "JPM", "XOM", "COST", "HD",
+  "PG", "JNJ", "ABBV", "MRK", "ORCL", "CRM", "AMD", "NFLX",
+  "ADBE", "WMT", "KO", "PEP", "BAC", "DIS", "CSCO", "QCOM",
+  "TXN", "AMAT", "INTU", "CAT", "GE", "BA", "LIN", "NOW",
+]
+
+[data]
+# stooq | csv  (csv はオフライン/テスト用: data.csv_dir 内の {SYMBOL}.csv を読む)
+provider = "stooq"
+cache_max_age_hours = 12
+csv_dir = ""
+
+[ai]
+# AIアドバイザー(Claude)。無効/キー未設定でもシステムはルールベースで完結する
+enabled = true
+# AIの権限は「リスク低減方向のみ」: 買い注文の拒否/縮小だけができる。追加・増額は不可
+veto_power = true
+model = "claude-opus-4-8"
+max_tokens = 2048

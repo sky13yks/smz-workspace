@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "smz-trader"
+version = "0.1.0"
+description = "SMZ Trader - 個人向けシステマティック株式運用エージェント(ペーパー/実弾)"
+requires-python = ">=3.11"
+# コア機能は標準ライブラリのみで動作する(15年運用のための依存最小化ポリシー)
+dependencies = []
+
+[project.optional-dependencies]
+# AIアドバイザー層(Claude API)を使う場合のみ
+ai = ["anthropic>=0.40"]
+
+[project.scripts]
+smz-trader = "smz_trader.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
