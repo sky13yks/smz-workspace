@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  macOS launchd 用テンプレート。cronと違い、指定時刻にMacがスリープ中でも
+  「次に起きた時」に自動で実行してくれる(見逃した日を静かに拾う)ため、
+  ノートPCでの「毎日止まらず実行」に向いている。
+
+  使い方:
+    1. __REPO_ROOT__ を実際の絶対パスに置換(例: /Users/yamaguchi/smz-workspace/trading-agent)
+    2. このファイルを ~/Library/LaunchAgents/com.smztrader.dailyrun.plist としてコピー
+    3. launchctl load -w ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+    4. 動作確認: launchctl start com.smztrader.dailyrun  (即時1回実行してログを確認)
+    5. 停止する場合: launchctl unload ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+
+  sed でまとめて置換する例:
+    sed "s|__REPO_ROOT__|$(pwd)|g" scripts/com.smztrader.dailyrun.plist.example \
+      > ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.smztrader.dailyrun</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>__REPO_ROOT__/scripts/run_daily.sh</string>
+    </array>
+    <!-- 平日朝08:10(米国市場クローズ後・JST)。土日は run-daily 側で自動的に何もしない -->
+    <key>StartCalendarInterval</key>
+    <dict>
+        <key>Hour</key>
+        <integer>8</integer>
+        <key>Minute</key>
+        <integer>10</integer>
+    </dict>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>StandardOutPath</key>
+    <string>__REPO_ROOT__/state/launchd.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>__REPO_ROOT__/state/launchd.err.log</string>
+</dict>
+</plist>
