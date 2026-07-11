@@ -18,24 +18,133 @@ smz-trader deposit 200000 --note "ペーパー開始"
 smz-trader run-daily
 ```
 
-## 1. 日次オペレーション(自動化推奨)
+## 1. 日次オペレーション(自動化・止めずに毎日実行する)
 
 **実行タイミング**: 米国市場クローズ後 = 日本時間 朝6〜9時台に1回。
 土日・休場日は「新しいバーなし」として自動で何もしない(冪等)。
 
-### ローカル(Dev Container / 自宅マシン)での自動化
+### 正直な前提(「止まらない」の限界)
+
+自動化の仕組み(cron/launchd/Task Scheduler)は**マシンが起動している間だけ**動く。
+PCの電源が完全に落ちている時間帯は何も実行できない — これはどの方法でも避けられない
+物理的な制約であり、以下の設定はその制約の中で「取りこぼしを最小化する」ものである。
+
+- 一時的なネットワーク障害(Wi-Fi再接続直後など)は**リトライで自動吸収**する(下記スクリプト)
+- ある日データが取れなくても、システムは「何もしない」フェイルセーフ設計なので実害はない。
+  翌日また自動的に実行され、価格データは最新分に追いつく(取りこぼした日を個別に穴埋めする
+  必要はない)
+- **PCの電源が数日切れる**ケースまで無人でカバーしたいなら、自宅サーバ/NAS/小型クラウドVM等の
+  「常時起動しているマシン」に移す必要がある(これは大きめの追加作業。希望があれば相談)
+
+### 推奨: リトライ付きラッパースクリプトを使う
+
+`scripts/run_daily.sh`(macOS/Linux/WSL/Git Bash)と `scripts/run_daily.bat`(Windows)を用意した。
+一時的な失敗を最大3回・90秒間隔でリトライしてから諦める(諦めてもスケジューラ自体は翌日
+また起動する — 1日分の失敗が自動化そのものを止めることはない)。ログは `state/cron.log` に蓄積される。
+
+```bash
+chmod +x scripts/run_daily.sh   # 初回のみ(macOS/Linuxで実行権限を付与)
+./scripts/run_daily.sh          # 手動で1回試す(cron等に登録する前に必ず動作確認)
+```
+
+リトライ回数・間隔は環境変数で調整可能: `SMZ_DAILY_MAX_RETRIES`(既定3)、`SMZ_DAILY_RETRY_DELAY`(既定90秒)。
+
+### macOS(ノートPC・スリープする運用): launchd LaunchAgent
+
+cronと違い、指定時刻にスリープ中でも**次に起きた時に自動で追いつき実行**してくれるため、
+夜間に閉じるノートPCとの相性が良い。ログインしている間だけ動く(LaunchAgent)。
+
+```bash
+# テンプレートを実パスに置換してコピー
+sed "s|__REPO_ROOT__|$(pwd)|g" scripts/com.smztrader.dailyrun.plist.example \
+  > ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+launchctl load -w ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+
+# 動作確認(即時1回実行)
+launchctl start com.smztrader.dailyrun
+tail -f state/cron.log
+
+# 停止したい時
+launchctl unload ~/Library/LaunchAgents/com.smztrader.dailyrun.plist
+```
+
+既定は平日08:10。時刻を変えたい場合は `~/Library/LaunchAgents/com.smztrader.dailyrun.plist` の
+`Hour`/`Minute` を編集後、`unload` → `load -w` でリロードする。
+
+### macOS(Mac mini等・常時起動デスクトップ運用): 推奨構成
+
+Mac miniのようにスリープさせずに置いておくマシンでは、以下の2点を合わせて設定すると
+「物理的な制約」の範囲内で最も止まりにくい構成になる。
+
+**1. スリープを無効化する**(ターミナルで1回実行。要sudo):
+
+```bash
+sudo pmset -a sleep 0 disksleep 0
+# ディスプレイが暗くなるだけの設定(displaysleep)は動作に影響しないので好みで良い:
+sudo pmset -a displaysleep 10
+pmset -g   # 現在の設定を確認
+```
+
+**2. LaunchAgentではなく LaunchDaemon を使う**(推奨): LaunchAgentは
+「ユーザーがGUIにログインしている間」しか動かない。Mac miniを常時ログイン状態で
+放置するだけなら LaunchAgent でも十分だが、**macOSのセキュリティアップデートによる
+無人再起動**が起きるとログインし直すまでLaunchAgentは動かない。LaunchDaemonは
+マシン起動時にログイン有無に関わらず動くため、この隙間も埋められる。
+
+```bash
+sed -e "s|__REPO_ROOT__|$(pwd)|g" -e "s|__MAC_USERNAME__|$(whoami)|g" \
+  scripts/com.smztrader.dailyrun.daemon.plist.example \
+  | sudo tee /Library/LaunchDaemons/com.smztrader.dailyrun.plist > /dev/null
+sudo launchctl load -w /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+
+# 動作確認(即時1回実行)
+sudo launchctl start com.smztrader.dailyrun
+tail -f state/cron.log
+
+# 停止したい時
+sudo launchctl unload /Library/LaunchDaemons/com.smztrader.dailyrun.plist
+```
+
+(LaunchAgentとLaunchDaemonの両方を同時に有効化しないこと — 二重実行の原因になる。
+どちらか一方だけ `load` する。)
+
+### Linux(Dev Container / 常時起動サーバ): cron
 
 ```bash
 crontab -e
-# 平日 08:10 JST に実行(TZがJSTのマシン)
-10 8 * * 1-5  cd /path/to/trading-agent && set -a && . config/secrets.env && set +a && \
-  PYTHONPATH=src python3 -m smz_trader run-daily >> state/cron.log 2>&1
+# 平日 08:10 JST に実行(TZがJSTのマシン/コンテナ)
+10 8 * * 1-5  /path/to/trading-agent/scripts/run_daily.sh
 ```
 
-### Claude Code クラウド環境での自動化(任意)
+**注意**: Dev Containerはローカルの開発機で `docker start` している間しか動かない。
+PCを閉じたりDockerを終了すると cron も止まる。「本当に毎日止めずに」を優先するなら、
+Dev Containerの外側(ホストOS)にcron/launchdを登録するか、常時起動のLinuxマシンに置く方が確実。
 
-この環境のネットワーク方針は市場データドメインをブロックしている(2026-07-11時点)。
-使う場合は環境設定で以下のドメインを許可してから、Claudeに「日次ルーチンを有効化して」と依頼:
+### Windows: タスクスケジューラ
+
+```powershell
+schtasks /create /tn "SMZTraderDaily" /tr "\"C:\path\to\trading-agent\scripts\run_daily.bat\"" /sc daily /st 08:10
+```
+
+GUIから設定する場合は「タスクスケジューラ」→「基本タスクの作成」→ プログラム
+`scripts\run_daily.bat` を毎日08:10に実行するよう指定。Pythonがインストール済みで
+`python` コマンドがPATHに通っていることが前提(`python --version` で確認)。
+
+### 動いているか確認する方法
+
+```bash
+tail -20 state/cron.log        # 直近の実行ログ(成功/失敗/リトライの記録)
+smz-trader status              # 「最終評価日」が最新営業日になっているか
+```
+
+数日「最終評価日」が進んでいなければ、スケジューラ自体が動いていない(PCの電源/Docker停止/
+launchd未登録など)可能性が高い。まず `./scripts/run_daily.sh` を手動実行してエラーを確認する。
+
+### Claude Code クラウド環境での自動化(任意・補助手段)
+
+上記のローカル自動化が本命。クラウド側でも動かしたい場合、この環境のネットワーク方針は
+市場データドメインをブロックしている(2026-07-11時点)。環境設定で以下のドメインを許可してから、
+Claudeに「日次ルーチンを有効化して」と依頼する:
 
 ```
 stooq.com            # 価格データ(必須)
@@ -43,6 +152,8 @@ api.anthropic.com    # AIレビュー(既に許可済み)
 ```
 
 補足: 無効化状態の日次Routine(トリガー)を作成してある場合は、有効化するだけでよい。
+ただしクラウド環境もセッション終了で停止しうるため、ローカル自動化の代替にはならない
+(併用は問題ない)。
 
 ## 2. コマンド一覧
 
