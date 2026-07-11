@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import advisor, ledger
-from .broker import make_broker
+from .broker import BrokerError, make_broker
 from .config import Config
 from .data import DataUnavailable, fetch_all, make_provider
 from .portfolio import (build_portfolio, compute_twr_index, equity_jpy,
@@ -82,6 +82,17 @@ def run_daily(cfg: Config, dry: bool = False, offline: bool = False,
         s.notes.append(f"為替({cfg.fx})が取得できません")
         return s
 
+    # ブローカーを早期に一度だけ生成(ライブ多重ゲートをここで検証)。
+    # 失敗したら発注・清算のいずれも行わずフェイルセーフで停止する。
+    try:
+        broker = make_broker(cfg)
+    except BrokerError as e:
+        s.status = "error"
+        s.notes.append(f"ブローカー利用不可のため何もしません(フェイルセーフ): {e}")
+        if not dry:
+            ledger.append_event(state_dir, ledger.NOTE, {"text": s.notes[-1]})
+        return s
+
     # 3. 冪等性: 同じ日付のMARKが既にあればスキップ
     lm = last_mark(events)
     if lm and lm.get("date") == today and not dry and not force_rebalance:
@@ -112,7 +123,6 @@ def run_daily(cfg: Config, dry: bool = False, offline: bool = False,
         s.status = "breaker"
         s.notes.append(f"ブレーカー発動: {br.name} — {br.detail}")
         liq = liquidation_orders(pf, prices)
-        broker = make_broker(cfg)
         fills, _ = broker.execute(liq, prices, fx, pf.cash_jpy, today)
         if not dry:
             for f in fills:
@@ -158,7 +168,6 @@ def run_daily(cfg: Config, dry: bool = False, offline: bool = False,
             else:
                 s.notes.append(f"AIレビュー未実施: {result.skip_reason}")
 
-        broker = make_broker(cfg)
         fills, broker_rejects = broker.execute(approved, prices, fx, pf.cash_jpy, today)
         s.rejected += [(o.symbol, o.side, r) for o, r in broker_rejects]
         s.fills = fills
@@ -180,9 +189,15 @@ def _month_start_index(events: list[dict], today: str) -> float | None:
 
 
 def _fill_data(f) -> dict:
-    return {"date": f.date, "symbol": f.symbol, "side": f.side, "qty": f.qty,
-            "price": f.price, "ccy": f.ccy, "fx": f.fx, "fee_jpy": f.fee_jpy,
-            "notional_jpy": f.notional_jpy, "reason": f.reason}
+    d = {"date": f.date, "symbol": f.symbol, "side": f.side, "qty": f.qty,
+         "price": f.price, "ccy": f.ccy, "fx": f.fx, "fee_jpy": f.fee_jpy,
+         "notional_jpy": f.notional_jpy, "reason": f.reason}
+    # 実ブローカーの冪等キー(あれば記録。sync-fills の二重計上防止に使う)
+    if getattr(f, "client_order_id", ""):
+        d["client_order_id"] = f.client_order_id
+    if getattr(f, "broker_order_id", ""):
+        d["broker_order_id"] = f.broker_order_id
+    return d
 
 
 def _write_report(cfg, summary, pf, prices, fx, dry: bool):
@@ -193,6 +208,76 @@ def _write_report(cfg, summary, pf, prices, fx, dry: bool):
         write_daily_report(cfg, summary, pf, prices, fx)
     except OSError as e:
         summary.notes.append(f"レポート書き込み失敗: {e}")
+
+
+def sync_fills(cfg: Config, offline: bool = False) -> list:
+    """実ブローカー側で後刻約定した注文を台帳へ反映する(冪等)。
+
+    市場閉場後に run-daily を実行すると成行注文は翌場寄りで約定する。その約定を
+    client_order_id をキーに重複なく FILL として記録する。ペーパーでは何もしない。
+    戻り値: 新たに記録した Fill のリスト。
+    """
+    from .broker import AlpacaBroker
+    broker = make_broker(cfg)
+    if not isinstance(broker, AlpacaBroker):
+        return []
+    state_dir = cfg.state_dir
+    events = ledger.read_events(state_dir)
+    recorded = {e["data"].get("client_order_id")
+                for e in events if e["type"] == ledger.FILL and e["data"].get("client_order_id")}
+
+    # notional(円)計算のため為替を取得。取れなければ何もしない(フェイルセーフ)。
+    try:
+        provider = make_provider(cfg, offline=offline)
+        fx_bars = provider.history(cfg.fx)
+        fx = fx_bars[-1].close if fx_bars else 0.0
+    except DataUnavailable:
+        fx = 0.0
+    if fx <= 0:
+        return []
+
+    new_fills = []
+    for od in broker.recent_orders("closed"):
+        coid = od.get("client_order_id", "")
+        if (od.get("status") == "filled" and coid.startswith("smz-")
+                and coid not in recorded and float(od.get("filled_qty") or 0) > 0):
+            f = broker._fill_from_order(od, None, fx, od.get("filled_at", "")[:10])
+            ledger.append_event(state_dir, ledger.FILL, _fill_data(f))
+            new_fills.append(f)
+            recorded.add(coid)
+    return new_fills
+
+
+def reconcile(cfg: Config) -> dict:
+    """台帳のポジション・現金と実ブローカーの実残高を照合する(読み取り専用)。
+
+    戻り値: {positions: [{symbol, ledger_qty, broker_qty, diff}], account: {...}, notes: [...]}
+    """
+    from .broker import AlpacaBroker
+    result: dict = {"positions": [], "account": {}, "notes": []}
+    broker = make_broker(cfg)
+    if not isinstance(broker, AlpacaBroker):
+        result["notes"].append("ペーパーモード: 外部ブローカーとの照合はありません")
+        return result
+    pf = build_portfolio(ledger.read_events(cfg.state_dir))
+    broker_pos = {p["symbol"]: float(p.get("qty") or 0.0) for p in broker.positions()}
+    symbols = set(pf.positions) | set(broker_pos)
+    for sym in sorted(symbols):
+        lq = pf.position_qty(sym)
+        bq = broker_pos.get(sym, 0.0)
+        result["positions"].append({
+            "symbol": sym, "ledger_qty": round(lq, 4),
+            "broker_qty": round(bq, 4), "diff": round(bq - lq, 4)})
+    acct = broker.account()
+    result["account"] = {
+        "status": acct.get("status"),
+        "currency": acct.get("currency"),
+        "cash": acct.get("cash"),
+        "buying_power": acct.get("buying_power"),
+        "ledger_cash_jpy": round(pf.cash_jpy, 0),
+        "is_paper": broker.is_paper,
+    }
+    return result
 
 
 def plan_withdrawal(pf, amount_jpy: float, prices: dict[str, float], fx: float,

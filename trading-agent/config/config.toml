@@ -11,10 +11,12 @@ start_cash_jpy = 200000
 hard_floor_jpy = 50000
 
 [mode]
-# paper | live  (live は broker 実装とAPIキーが揃うまで起動を拒否する)
+# paper | live  (live は broker 実装・APIキー・SMZ_LIVE_CONFIRM が揃うまで発注を拒否する)
 trading = "paper"
 # 米国株の端数株(フラクショナル)取引を前提にするか
 fractional = true
+# live 時に使う実弾ブローカーアダプタ: alpaca(米国株) | kabu(日本株・未実装)
+live_broker = "alpaca"
 
 [paper]
 # ペーパー運用の開始日(決定論リプレイの基準日)

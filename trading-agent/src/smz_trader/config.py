@@ -16,6 +16,7 @@ class Config:
     # mode
     trading: str
     fractional: bool
+    live_broker: str
     # paper
     inception: str
     # strategy
@@ -89,6 +90,7 @@ def load_config(path: str | Path) -> Config:
         hard_floor_jpy=float(acct.get("hard_floor_jpy", 50_000)),
         trading=mode.get("trading", "paper"),
         fractional=bool(mode.get("fractional", True)),
+        live_broker=mode.get("live_broker", "alpaca"),
         inception=paper.get("inception", "2026-07-14"),
         core_weight=float(strat.get("core_weight", 0.70)),
         satellite_weight=float(strat.get("satellite_weight", 0.30)),
@@ -128,6 +130,8 @@ def _validate(cfg: Config) -> None:
     errors = []
     if cfg.trading not in ("paper", "live"):
         errors.append(f"mode.trading が不正: {cfg.trading}")
+    if cfg.live_broker not in ("alpaca", "kabu"):
+        errors.append(f"mode.live_broker が不正: {cfg.live_broker}(alpaca|kabu)")
     if cfg.core_weight + cfg.satellite_weight > 1.0 + 1e-9:
         errors.append("core_weight + satellite_weight が 1.0 を超えています")
     if not (0 < cfg.max_drawdown < 1):

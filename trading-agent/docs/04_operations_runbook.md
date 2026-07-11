@@ -58,6 +58,9 @@ api.anthropic.com    # AIレビュー(既に許可済み)
 | `smz-trader resume [--acknowledge]` | 再開 |
 | `smz-trader verify-ledger` | 台帳の改竄検査 |
 | `smz-trader fetch-data` | 全銘柄キャッシュ更新 |
+| `smz-trader broker-check` | ブローカー接続・口座状態の確認(読み取り専用) |
+| `smz-trader reconcile` | 台帳 vs 実ブローカー残高の照合(読み取り専用) |
+| `smz-trader sync-fills` | 後刻約定(市場閉場後の発注)を台帳へ反映(冪等) |
 
 ## 3. 月次レビュー(15分・毎月第1土曜など固定)
 
@@ -85,6 +88,48 @@ api.anthropic.com    # AIレビュー(既に許可済み)
   - 為替差損益にも留意(円転時)
 - 国内ブローカー(kabuステーション等)なら特定口座(源泉徴収あり)で申告簡略化可
 - 迷ったら税理士に台帳エクスポートを渡す(それができる形式で記録されている)
+
+## 5.5 実弾運用の手順(Phase 2 — Alpacaアダプタ)
+
+実弾ブローカー(Alpaca米国株)は実装済み。ただし発注は**多重ゲート**を全通過した時だけ有効になる。
+config を `live` にしただけでは1円も動かない設計。
+
+### 5.5.1 まず偽金で実APIを試す(並走テスト。docs/02 R8)
+
+Alpaca の **paper エンドポイントは本番とAPI完全同一**。実弾コード経路を無リスクで検証できる。
+
+```bash
+# 1. Alpacaでペーパー口座を作成(メアドのみ・無料) → APIキー発行
+# 2. secrets.env に設定(ALPACA_BASE_URL は paper-api.alpaca.markets のまま)
+cp config/secrets.env.example config/secrets.env   # 編集
+set -a; source config/secrets.env; set +a
+# 3. 確認フレーズを設定(このシェルだけ)
+export SMZ_LIVE_CONFIRM="I understand this trades real money"
+# 4. config.toml の mode.trading を "live"(live_broker="alpaca")に
+# 5. 接続確認 → 最小ロットで1回発注 → 照合
+smz-trader broker-check          # 口座状態・買付余力を表示("ペーパー(偽金・実API)"と出る)
+smz-trader run-daily --force-rebalance
+smz-trader sync-fills            # 市場閉場中に出した注文の約定を後刻反映
+smz-trader reconcile             # 台帳とAlpaca残高が一致するか照合
+```
+
+これを2週間並走させ、`reconcile` が常に一致することを確認する。
+
+### 5.5.2 実弾へ切り替える(本物のお金)
+
+- **入金の実体**: Alpaca口座は **USD建て**。円をUSDに替えて口座へ入れる必要がある(送金・両替は
+  ブローカー外の作業)。システムの `deposit`(円)はあくまで台帳上の入金記録で、実際のUSD残高とは
+  `reconcile` で突き合わせる。海外業者のため**確定申告必須・損失の3年繰越控除は使えない**(docs/03 §4)。
+- 切り替えは `ALPACA_BASE_URL=https://api.alpaca.markets`(本番)に変更するだけ。`broker-check` の
+  表示が **"★実弾(本物のお金)★"** に変わる。docs/02 R7 の手続き(変更PR→24時間→再レビュー)を経ること。
+- 最初は必ず **最小ロット(1万円分)** で発注テストし、`reconcile` で約定・残高を目視照合してから全額運用。
+
+### 5.5.3 市場時間と後刻約定
+
+日次実行は米国市場クローズ後(JST朝)を推奨だが、その時刻は**米国市場は閉場**している。
+成行注文は翌場寄りで約定するため、`run-daily` 直後は「未約定(保留中)」と表示される。
+翌日の朝に `smz-trader sync-fills` を1回走らせると、約定済み注文が台帳に反映される
+(冪等キーで二重計上しない)。cron に `run-daily` の翌時間帯へ `sync-fills` を1本足すとよい。
 
 ## 6. 家族向け緊急手順書(印刷して保管)
 

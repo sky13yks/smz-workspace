@@ -121,7 +121,9 @@
 - [ ] Phase 1 合格基準クリア(docs/00 §3)
 - [ ] §2の選定手順を完了(Webull/moomooの特定口座×API可否の確認結果を本ファイルに追記)
 - [ ] 口座開設・入金・**手動で**1株買ってみる(操作理解)
-- [ ] `broker.py` にアダプタ実装 + ペーパー並走テスト2週間
-- [ ] 最小ロット(1万円分)でAPI発注テスト → 約定・残高照合
+- [x] **Alpacaアダプタ実装済み**(`broker.AlpacaBroker`)。国内業者採用時は同インターフェースで1クラス追加
+- [ ] Alpaca **ペーパー**エンドポイントで並走テスト2週間: `broker-check` → `run-daily` → `sync-fills` → `reconcile` が常に一致
+- [ ] `ALPACA_BASE_URL` を本番(api.alpaca.markets)に変更し、最小ロット(1万円分)でAPI発注テスト → `reconcile` で約定・残高照合
 - [ ] `secrets.env` にキー設定(Git管理外)・docs/04 §6 の家族向け手順書に口座情報記入
 - [ ] docs/02 R7 の手続きで `mode.trading="live"` への変更PRを作成 → 24時間 → マージ
+- [ ] 実弾発注の最終安全装置 `SMZ_LIVE_CONFIRM` を運用環境に設定(これが無いと config が live でも発注しない)
